@@ -1,0 +1,124 @@
+---
+title: "Practical Machine Learning"
+author: "Juliana Clemente"
+date: "24 de julho de 2017"
+output: html_document
+---
+
+#Intro
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data Source 
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har
+
+# Data processing
+
+Libraries
+```{r message = FALSE, echo= FALSE}
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(rpart)
+library(randomForest)
+library(rpart.plot)
+library(rattle)
+set.seed(12336824)
+```
+
+## Import training data
+
+```{r}
+# Read the training dataset and set "#DIV/0!" as NA
+train <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+                  , na.strings=c("NA","#DIV/0!",""), stringsAsFactors = FALSE) 
+
+#Variável de Interesse: Classe = 'A'
+#summary(train)
+```
+
+Eliminate first six rows related to data identification variables (id, timestamps...)
+```{r}
+train <- train[, -(1:6)]
+```
+
+
+## Partition Training Set
+
+Partioning Training data set into two data sets, 60% for training, 40% for testing, to allow for cross validation
+
+```{r}
+inTrain <- createDataPartition(y=train$classe, p=0.6, list=FALSE)
+training <- train[inTrain, ]
+dim(training)
+testing <-  train[-inTrain, ]
+dim(testing)
+```
+
+## Cleaning Data set
+
+Eliminate variables with near zero variance
+```{r}
+nearZero <- nearZeroVar(training, saveMetrics=TRUE)
+
+training <- training[, !nearZero$nzv]
+
+# Apply the same to the testing set
+testing <-  testing[, !nearZero$nzv]
+```
+
+Eliminate variables with too many NAs (consider too many as more than 70% of NAs)
+
+```{r}
+treshold <- nrow(training) * 0.7
+#Remove columns with more than 70% of NA or "" values
+goodColumns <- !apply(training, 2, function(x) sum(is.na(x)) > treshold  || sum(x=="") > treshold)
+
+training <- training[, goodColumns]
+
+# Apply the same to the testing set
+testing <-  testing[, goodColumns]
+
+training$classe <- as.factor(training$classe)
+```
+
+# Prediction with Random Forest Model
+
+## Construct model
+```{r}
+forestPrediction <- randomForest(classe ~., data=training, type="class")
+```
+
+Check error estimates
+
+```{r}
+trainResults <- predict(forestPrediction,newdata=training)
+
+## Use a confusion matrix to get the insample error
+confusionMatrix(trainResults,training$classe)
+```
+
+## Validation of the model
+
+Now, lets  test our model performance applying it to the test set 
+
+```{r}
+testingResults <- predict(forestPrediction, testing)
+print(confusionMatrix(testingResults, testing$classe))
+```
+
+The cross validation accuracy is about 99.5% with high levels of sensitivity by class, which seems very good.
+
+
